@@ -4,16 +4,90 @@ import url from "url";
 import { connectDB } from "./app/lib/config/db.js";
 import P2PMessage from "./app/lib/model/p2p.js";
 import Message from "./app/lib/model/Message.js";
+import ActiveVoiceUser from "./app/lib/model/Voice.js";
 
 const server = http.createServer((req, res) => {
   res.writeHead(200, { "Content-Type": "text/plain" });
-  res.end("HTTP Server is running");
+  res.end("Socket Server is running");
 });
 
 connectDB()
 
 const wssGeneral = new WebSocketServer({ noServer: true });
+const wssVoice = new WebSocketServer({ noServer: true });
+const wssP2P = new WebSocketServer({ noServer: true });
 const clients = new Set();
+const voiceClients = new Set();
+const users = {};
+
+// Add user to active voice collection
+export const addActiveUser = async (userId) => {
+  try {
+    await ActiveVoiceUser.findOneAndUpdate({ userId }, { userId }, { upsert: true });
+    console.log(`User ${userId} added to active voice chat.`);
+  } catch (err) {
+    console.error("Failed to add user to active voice chat:", err);
+  }
+};
+
+// Remove user from active voice collection
+export const removeActiveUser = async (userId) => {
+  try {
+    await ActiveVoiceUser.deleteOne({ userId });
+    console.log(`User ${userId} removed from active voice chat.`);
+  } catch (err) {
+    console.error("Failed to remove user from active voice chat:", err);
+  }
+};
+
+wssVoice.on("connection", async (ws, req) => {
+  const queryParams = url.parse(req.url, true).query;
+  const userId = queryParams.userId;
+
+  if (!userId) {
+    console.error("Connection rejected: Missing userId");
+    ws.close();
+    return;
+  }
+
+  voiceClients.add(ws);
+  await addActiveUser(userId);
+  console.log(`User ${userId} joined the voice chat`);
+
+  ws.on("message", async (data) => {
+    try {
+      const message = JSON.parse(data);
+
+      switch (message.type) {
+        case "offer":
+        case "answer":
+        case "candidate":
+          voiceClients.forEach((client) => {
+            if (client !== ws && client.readyState === WebSocket.OPEN) {
+              client.send(JSON.stringify({ ...message, sender: userId }));
+            }
+          });
+          break;
+
+        case "leave":
+          voiceClients.delete(ws);
+          await removeActiveUser(userId);
+          console.log(`User ${userId} left the voice chat`);
+          break;
+
+        default:
+          console.log("Unknown message type:", message.type);
+      }
+    } catch (err) {
+      console.error("Failed to process WebRTC message:", err);
+    }
+  });
+
+  ws.on("close", () => {
+    console.log(`User ${userId} disconnected from voice chat`);
+    voiceClients.delete(ws);
+  });
+});
 
 wssGeneral.on("connection", (ws) => {
   console.log("New WebSocket connection");
@@ -62,8 +136,7 @@ wssGeneral.on("connection", (ws) => {
   });
 });
 
-const wssP2P = new WebSocketServer({ noServer: true });
-const users = {};
+
 wssP2P.on("connection", (ws, req) => {
   const queryParams = url.parse(req.url, true).query;
   const userId = queryParams.userId;
@@ -146,6 +219,10 @@ server.on("upgrade", (req, socket, head) => {
   } else if (pathname === "/p2p") {
     wssP2P.handleUpgrade(req, socket, head, (ws) => {
       wssP2P.emit("connection", ws, req);
+    });
+  } else if (pathname === "/voice") {
+    wssVoice.handleUpgrade(req, socket, head, (ws) => {
+      wssVoice.emit("connection", ws, req);
     });
   } else {
     socket.destroy();
