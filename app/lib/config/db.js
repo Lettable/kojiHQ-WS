@@ -1,6 +1,9 @@
 import mongoose from "mongoose";
+import dotenv from "dotenv";
 
-const MONGO_URI = 'mongodb+srv://pythoncux:pythoncux@cluster0.tl7krxg.mongodb.net/KojiHQ'
+dotenv.config();
+
+const MONGO_URI = process.env.MONGO_URI;
 
 if (!MONGO_URI) {
   throw new Error("Please define the MONGO_URI environment variable inside .env.local");

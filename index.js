@@ -20,7 +20,6 @@ const clients = new Set();
 const voiceClients = new Set();
 const users = {};
 
-// Add user to active voice collection
 export const addActiveUser = async (userId) => {
   try {
     await ActiveVoiceUser.findOneAndUpdate({ userId }, { userId }, { upsert: true });
