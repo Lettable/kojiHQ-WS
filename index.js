@@ -1,5 +1,5 @@
 import http from "http";
-import { WebSocketServer } from "ws";
+import WebSocket, { WebSocketServer } from "ws";
 import url from "url";
 import { connectDB } from "./app/lib/config/db.js";
 import P2PMessage from "./app/lib/model/p2p.js";
